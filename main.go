@@ -1,133 +1,129 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"log"
-	"math/rand"
 	"os"
 	"os/signal"
 	"strings"
 
+	// youtube "github.com/UFeindschiff/youtube"
+	youtube "github.com/MiguelCiulog/youtube-fork"
 	"github.com/bwmarrin/discordgo"
 	"github.com/jonas747/dca"
-	"github.com/kkdai/youtube/v2"
 )
 
+// Discord initialization
 var (
 	bot       *discordgo.Session
-	prefix    = "%"
+	prefix    = "-"
 	serverIDs = []string{""} // add your server ID here
 )
 
+var botToken = "ODg3MzgzNDU4MDEwMjQ3MTY4.GA4KBm.NfK1Dm_O7qRtliGQTsPBPpH_dWhR1rWsIb-kKw"
+
 func init() {
-	args := os.Args
-	if len(args) < 2 {
-		log.Fatal("No token provided...")
-	}
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	// args := os.Args
+	// if len(args) < 2 {
+	// 	log.Fatal("No token provided...")
+	// }
 	var err error
-	bot, err = discordgo.New("Bot " + args[1])
+	bot, err = discordgo.New("Bot " + botToken)
 	if err != nil {
 		log.Fatalf("Can't create session from the token: %v", err)
 	}
 }
 
+// Youtube initialization
 var (
-	yt            *youtube.Client
+	yt            youtube.Client
 	encodeOptions *dca.EncodeOptions
 )
 
 func init() {
-	yt = &youtube.Client{}
+	yt = youtube.NewClient()
 	encodeOptions = dca.StdEncodeOptions
 	encodeOptions.RawOutput = true
 	encodeOptions.Bitrate = 24
 	encodeOptions.Application = "lowdelay"
 }
 
-func getStreamURL(videoUrl string) (string, error) {
-	video, err := yt.GetVideo(getRandomSuperIdolYTLink())
+func getStreamURL(videoName string) (string, error) {
+	fmt.Println(videoName)
+
+	results, err := youtube.Search(videoName, 0)
 	if err != nil {
+		log.Fatal(err)
+	}
+
+	// fmt.Printf("Got %d search result(s).\n\n", len(results.Items))
+
+	if len(results.Items) == 0 {
+		if err != nil {
+			log.Fatal("got zero search results")
+		}
+	}
+
+	// Get the first search result and print out its details.
+
+	details := results.Items[0]
+
+	// fmt.Printf(
+	// 	"ID: %q\n\nTitle: %q\nAuthor: %q\nDuration: %q\n\nView Count: %q\nLikes: %d\nDislikes: %d\n\n",
+	// 	details.ID,
+	// 	details.Title,
+	// 	details.Author,
+	// 	details.Duration,
+	// 	details.Views,
+	// 	details.Likes,
+	// 	details.Dislikes,
+	// )
+	url_parsed := "https://www.youtube.com/watch?v=" + details.ID
+
+	player, err := yt.Load(url_parsed)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Printf(
+		"Title: %q\nAuthor: %q\nView Count: %s\n\n",
+		player.Title(),
+		player.Author(),
+		player.ViewCount(),
+	)
+
+	stream, ok := player.SourceFormats().AudioOnly().BestAudio()
+	if !ok {
+		if err != nil {
+			log.Fatal(err)
+			return "", err
+		}
+	}
+
+	url, err := player.ResolveURL(stream)
+	fmt.Println(url)
+	if err != nil {
+		log.Fatal(err)
 		return "", err
 	}
-	formats := video.Formats.WithAudioChannels()
-	url, err := yt.GetStreamURL(video, &formats[0])
-	if err != nil {
-		return "", err
-	}
+	fmt.Println("err", err)
+
 	return url, nil
 }
 
-var (
-	infamousPeople = map[string]string{
-		"champ": "https://images-ext-1.discordapp.net/external/Lp_FlEMlN1S7iDm6h4BCI0Nu0jl0hQZKrfdKA_mWKTU/https/media.discordapp.net/attachments/842035790363885608/887279334258266182/sunglassesChampThink.gif?format=png",
-		"fluke": "https://media.discordapp.net/attachments/842035790363885608/907606047403950090/fluk.png",
-	}
-	song = map[string]string{
-		"chinese": "Super idol的笑容\n" +
-			"都没你的甜\n" +
-			"八月正午的阳光\n" +
-			"都没你耀眼\n" +
-			"热爱105°C度的你\n" +
-			"滴滴清纯的蒸馏水\n" +
-			"你不知道你有多可爱\n" +
-			"跌倒后会傻笑着再站起来\n" +
-			"你从来都不轻言失败\n" +
-			"对梦想的执著一直不曾更改\n" +
-			"很安心 当你对我说\n" +
-			"不怕有我在\n" +
-			"放著让我来\n" +
-			"勇敢追自己的梦想\n" +
-			"那坚定的模样\n",
-		"pinyin": "Super Idol de xiaorong\n" +
-			"dou mei ni de tian\n" +
-			"ba yue zhengwu de yangguang\n" +
-			"dou mei ni yaoyan\n" +
-			"re’ai 105 °C de ni\n" +
-			"di di qingchun de zhengliushui\n" +
-			"ni bu zhidao ni you duo ke’ai\n" +
-			"diedao hou hui shaxiaozhe zai zhan qilai\n" +
-			"ni conglai dou bu qing yan shibai\n" +
-			"dui mengxiang de zhizhuo yizhi buceng genggai\n" +
-			"hen anxin dang ni dui wo shuo\n" +
-			"bupa you wo zai\n" +
-			"fangzhe rang wo lai\n" +
-			"yonggan zhui ziji de mengxiang\n" +
-			"na jianding de muyang\n",
-		"romaji": "super idol no egao yori mo\n" +
-			"ano hachigatsu no gogo yori mo\n" +
-			"hyakkugosen shuu tou yori\n" +
-			"hikaru kimi e\n" +
-			"kawaii tto ierunara\n" +
-			"koronde mo sugu warau kimi wa\n" +
-			"yume wa tooi hazunanoni\n" +
-			"yubi sashita hoshi ga chikazuita\n" +
-			"yasashii kaze fuite\n" +
-			"tonari ijou motto chikaku\n" +
-			"futari nara daijoubu sou ittara\n",
-		"thai": "Super Idol ก็ยิ้มไม่หวานได้เท่ากับเธอ\n" +
-			"ดวงอาทิตย์ที่ว่าสดใสก็ยังไม่เท่าเธอ\n" +
-			"องศารักที่ 105 นี้ได้กลั่นเป็นน้ำสะอาดใสไหลริน\n" +
-			"เคยรู้ไหมว่าเธอน่ารักแค่ไหน\n" +
-			"แม้ล้มลงไปกี่ครั้งก็จะลุกขึ้นใหม่\n" +
-			"เรื่องไหนเธอก็ไม่เคยคิดถอดใจ\n" +
-			"มุ่งมั่นวิ่งตามความฝันและไม่เคยผันแปรไป\n" +
-			"เธอบอกฉันว่า เธอไม่ต้องกลัว ไม่ว่าเจอเรื่องใด เธอก็ยังมีฉัน\n" +
-			"จงตั้งใจไล่ตามความฝันและจงไม่ยอมเลิกราไปง่ายๆ\n",
-	}
-	superidolYTIDs = []string{"https://youtu.be/HTGdfE2s4Hw", "https://youtu.be/chY9p-XLHHk", "https://youtu.be/DKpaKHUlyBY", "https://youtu.be/8ywlhKFWAzg"}
-)
-
-func getRandomSuperIdolYTLink() string {
-	return superidolYTIDs[rand.Intn(len(superidolYTIDs))]
-}
-
 func MessageResponseHandler(bot *discordgo.Session, m *discordgo.MessageCreate) {
+	// Check for message
+	// Ignore bot messages
 	if m.Author.Bot || !strings.HasPrefix(m.Content, prefix) {
 		return
 	}
+
 	message := strings.TrimPrefix(m.Content, prefix)
+	urlMessage := strings.Split(message, " ")
 	switch {
-	case message == "play":
+	case urlMessage[0] == "play" || urlMessage[0] == "p":
 		channel, err := bot.State.Channel(m.ChannelID)
 		if err != nil {
 			return
@@ -136,6 +132,7 @@ func MessageResponseHandler(bot *discordgo.Session, m *discordgo.MessageCreate) 
 		if err != nil {
 			return
 		}
+
 		channelID := ""
 		for _, vs := range guild.VoiceStates {
 			if vs.UserID == m.Author.ID {
@@ -143,20 +140,28 @@ func MessageResponseHandler(bot *discordgo.Session, m *discordgo.MessageCreate) 
 				break
 			}
 		}
+
 		if channelID == "" {
 			bot.ChannelMessageSend(m.ChannelID, "You aren't in a voice channel")
 			return
 		}
-		url, err := getStreamURL(getRandomSuperIdolYTLink())
+
+		videoName := strings.Join(urlMessage[1:], " ")
+
+		url, err := getStreamURL(videoName)
 		if err != nil {
+			bot.ChannelMessageSend(m.ChannelID, "line 98:")
 			bot.ChannelMessageSend(m.ChannelID, err.Error())
 			return
 		}
+
 		encodingSession, err := dca.EncodeFile(url, encodeOptions)
 		if err != nil {
+			bot.ChannelMessageSend(m.ChannelID, "line 104:")
 			bot.ChannelMessageSend(m.ChannelID, err.Error())
 			return
 		}
+
 		defer encodingSession.Cleanup()
 		vc, err := bot.ChannelVoiceJoin(guild.ID, channelID, false, true)
 		if err != nil {
@@ -187,51 +192,9 @@ func EmojiResponseHandler(bot *discordgo.Session, m *discordgo.MessageCreate) {
 	}
 }
 
-func SlashCommandsHandler(bot *discordgo.Session, i *discordgo.InteractionCreate) {
-	cmd := i.ApplicationCommandData().Name
-	if link, exist := infamousPeople[cmd]; exist {
-		bot.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: link,
-			},
-		})
-	}
-	if cmd == "gift" {
-		bot.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: getRandomSuperIdolYTLink(),
-			},
-		})
-	}
-	if cmd == "lyrics" {
-		if len(i.ApplicationCommandData().Options) == 0 {
-			return
-		}
-		optionName := i.ApplicationCommandData().Options[0].Name
-		if optionName != "language" {
-			return
-		}
-		if len(i.ApplicationCommandData().Options[0].Options) == 0 {
-			return
-		}
-		selectedOption := i.ApplicationCommandData().Options[0].Options[0].Name
-		if lyrics, ok := song[selectedOption]; ok {
-			bot.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-				Type: discordgo.InteractionResponseChannelMessageWithSource,
-				Data: &discordgo.InteractionResponseData{
-					Content: lyrics,
-				},
-			})
-		}
-	}
-}
-
 func init() {
 	bot.AddHandler(MessageResponseHandler)
 	bot.AddHandler(EmojiResponseHandler)
-	bot.AddHandler(SlashCommandsHandler)
 }
 
 var commands = []*discordgo.ApplicationCommand{
